@@ -55,7 +55,9 @@ with BuildPart() as cover_part:
     thicken(amount=PILLAR_HEIGHT)
 
     with BuildSketch(cover_part_top) as cover_hole_sketch:
-        height = cover_height - (FRAME_OUTER_SIZE_VERT - FRAME_SIZE) / 2 - FRAME_ERROR * 2
+        height = (
+            cover_height - (FRAME_OUTER_SIZE_VERT - FRAME_SIZE) / 2 - FRAME_ERROR * 2
+        )
         Rectangle(FRAME_SIZE - FRAME_ERROR * 2, height)
     thicken(amount=COVER_INNER_THICKNESS)
 
