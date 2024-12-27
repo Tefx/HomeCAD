@@ -8,8 +8,8 @@ TOP_ARM_MIN_LENGTH = 40 * MM
 HOLES = 6
 HOLE_DIAMETER = 4 * MM
 HOLE_INTERVAL = (TOP_ARM_MIN_LENGTH - HOLES * HOLE_DIAMETER) / (HOLES + 1)
-HOLE_DEPTH = FRAME_WITDH * 0.2
-ERROR = 0.4 * MM
+HOLE_DEPTH = FRAME_WITDH * 0.5 * 1
+ERROR = 0.3 * MM
 
 with BuildPart() as part_female:
     with BuildSketch() as sketch_female:
@@ -32,14 +32,11 @@ with BuildPart() as part_female:
     with BuildSketch(box.faces().sort_by(sort_by=Axis.Z)[0]) as sketch_hole:
         hole_x = HOLE_DIAMETER / 2 + HOLE_INTERVAL - TOP_ARM_MIN_LENGTH / 2
         with Locations(
-            *[
-                (hole_x + (HOLE_INTERVAL + HOLE_DIAMETER) * i, 0)
-                for i in range(HOLES)
-            ]
+            *[(hole_x + (HOLE_INTERVAL + HOLE_DIAMETER) * i, 0) for i in range(HOLES)]
         ):
             RegularPolygon(HOLE_DIAMETER / 2 + ERROR / 2, side_count=5)
     thicken(amount=HOLE_DEPTH + ERROR, mode=Mode.SUBTRACT)
-    
+
 
 with BuildPart() as part_male:
     with BuildSketch() as sketch_male:
@@ -62,10 +59,7 @@ with BuildPart() as part_male:
     with BuildSketch(box.faces().sort_by(sort_by=Axis.Z)[-1]) as sketch_hole:
         hole_x = HOLE_DIAMETER / 2 + HOLE_INTERVAL - TOP_ARM_MIN_LENGTH / 2
         with Locations(
-            *[
-                (hole_x + (HOLE_INTERVAL + HOLE_DIAMETER) * i, 0)
-                for i in range(HOLES)
-            ]
+            *[(hole_x + (HOLE_INTERVAL + HOLE_DIAMETER) * i, 0) for i in range(HOLES)]
         ):
             RegularPolygon(HOLE_DIAMETER / 2, side_count=5)
     thicken(amount=-HOLE_DEPTH, mode=Mode.ADD)
