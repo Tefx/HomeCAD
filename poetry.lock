@@ -303,6 +303,25 @@ tests = ["pytest (>=3.2.1,!=3.3.0)"]
 typecheck = ["mypy"]
 
 [[package]]
+name = "bd_warehouse"
+version = "0.1.dev145+gd4d34e7"
+description = "A python CAD programming library"
+optional = false
+python-versions = ">=3.9"
+files = []
+develop = false
+
+[package.dependencies]
+build123d = "*"
+typing_extensions = ">=4.4.0,<5"
+
+[package.source]
+type = "git"
+url = "https://github.com/gumyr/bd_warehouse.git"
+reference = "HEAD"
+resolved_reference = "d4d34e74b46177d2056cb024707063a897f065f3"
+
+[[package]]
 name = "beautifulsoup4"
 version = "4.12.3"
 description = "Screen-scraping library"
@@ -5074,4 +5093,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.9,<3.13"
-content-hash = "4182ae6684dee5135743f7f0c24a7be20931282bb4f0d264643a380777c68ddf"
+content-hash = "80c3b1d591a27049cd6c3e72cc6e23977167d60aa6a97f47fb22259b93f06429"
