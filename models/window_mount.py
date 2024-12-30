@@ -53,7 +53,7 @@ def make_mount(
     mount_width=10 * MM,
     slot_depth=3 * MM,
     slot_tolerance=0.1 * MM,
-    primary_support_position=0.8,
+    primary_support_position=0.9,
     secondary_support_position=0.8,
 ):
     slot_number = gf_unit * 2 + 1
@@ -93,22 +93,6 @@ def make_mount(
                 offset(amount=mount_thickness + slot_depth, side=Side.LEFT)
             make_face()
             with BuildLine():
-                l5 = Line(
-                    l2 @ (1 - primary_support_position), l4 @ primary_support_position
-                )
-                offset(amount=mount_thickness, side=Side.LEFT)
-            make_face()
-            with BuildLine():
-                l6 = Line(
-                    l1 @ 1,
-                    (
-                        WINDOW_FRAME_DEPTH,
-                        -WINDOW_FRAME_SECOND_LOWER_HEIGHT * secondary_support_position,
-                    ),
-                )
-                offset(amount=mount_thickness, side=Side.RIGHT)
-            make_face()
-            with BuildLine():
                 _height = WINDOW_FRAME_HEIGHT + WINDOW_FRAME_SECOND_UPPER_HEIGHT
                 _tmp_x = WINDOW_FRAME_DEPTH + WINDOW_FRAME_SECOND_UPPER_THICKNESS
                 l8 = Line(l3 @ 1, (WINDOW_FRAME_DEPTH, _height))
@@ -120,17 +104,31 @@ def make_mount(
                 offset(amount=mount_thickness, side=Side.LEFT)
             make_face()
         thicken(amount=mount_width)
+
+        def _find_shape_by_axis(shape, axis, v):
+            return shape.filter_by_position(axis, v - 0.001, v + 0.001)
+
         fillet(
             part_mount.edges().sort_by(Axis.X)[2:4],
             (mount_thickness + slot_depth) / 2 - 0.001,
         )
+
+        def _find_edge(edges, x, y):
+            return edges.filter_by_position(Axis.X, x - 0.001, x + 0.001).filter_by_position(Axis.Y, y - 0.001, y + 0.001)[0]
+
+        edge = _find_edge(
+                part_mount.edges(),
+                WINDOW_FRAME_DEPTH + WINDOW_FRAME_SECOND_UPPER_THICKNESS + mount_thickness,
+                WINDOW_FRAME_HEIGHT + WINDOW_FRAME_SECOND_UPPER_HEIGHT - WINDOW_FRAME_SECOND_HOOK_MAX_ALLOW_LENGTH
+            )
         chamfer(
-            part_mount.edges().sort_by(Axis.X)[-1],
-            length=WINDOW_FRAME_SECOND_HOOK_MAX_ALLOW_LENGTH - 0.001,
-            length2=mount_thickness - 0.001,
+            edge,
+            length=mount_thickness - 0.001,
+            length2=WINDOW_FRAME_SECOND_HOOK_MAX_ALLOW_LENGTH - 0.001,
         )
 
-        with BuildSketch(part_mount.faces().sort_by(Axis.Y)[-11]) as sketch_holes:
+        face = _find_shape_by_axis(part_mount.faces(), Axis.Y, WINDOW_FRAME_HEIGHT + mount_thickness + slot_depth)[0]
+        with BuildSketch(face) as sketch_holes:
             start = (
                 -(WINDOW_FRAME_DEPTH + mount_outreach_length) / 2
                 + mount_thickness
@@ -146,7 +144,37 @@ def make_mount(
                 RegularPolygon(slot_width + slot_tolerance / sin(pi / 3), side_count=6)
                 Rectangle(mount_width + slot_tolerance * 2, slot_width)
         thicken(amount=-slot_depth, mode=Mode.SUBTRACT)
-    return part_mount.part
+
+    with BuildPart() as part_mount_support:
+        with BuildSketch():
+            _num = slot_number // 4 + 1
+            _interval = (mount_outreach_length - MOUNT_THICKNESS) * primary_support_position / _num
+            for i in range(_num):
+                with BuildLine():
+                    l5 = EllipticalCenterArc(
+                        (-MOUNT_THICKNESS, WINDOW_FRAME_HEIGHT),
+                        _interval * (i + 1),
+                        WINDOW_FRAME_HEIGHT * primary_support_position,
+                        start_angle=180,
+                        end_angle=270,
+                    )
+                    offset(l5, amount=mount_thickness, side=Side.LEFT)
+                make_face()
+            with BuildLine():
+                l6 = Line(
+                    l1 @ 1,
+                    (
+                        WINDOW_FRAME_DEPTH,
+                        -WINDOW_FRAME_SECOND_LOWER_HEIGHT * secondary_support_position,
+                    ),
+                )
+                offset(amount=mount_thickness, side=Side.RIGHT)
+            make_face()
+        thicken(amount=mount_width)
+    
+    mount = part_mount.part + part_mount_support.part
+    
+    return mount
 
 
 def make_rail(
@@ -184,8 +212,8 @@ def make_rail(
     return rail.part
 
 
-GRID_SIZE = 1, 1
-MOUNT_THICKNESS = 3 * MM
+GRID_SIZE = 4, 2
+MOUNT_THICKNESS = 5 * MM
 MOUNT_WIDTH = 10 * MM
 SLOT_DEPTH = 3 * MM
 
