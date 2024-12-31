@@ -54,7 +54,7 @@ def make_mount(
     slot_depth=3 * MM,
     slot_tolerance=0.1 * MM,
     primary_support_position=0.9,
-    secondary_support_position=0.8,
+    secondary_support_position=0.6,
 ):
     slot_number = gf_unit * 2 + 1
     slot_width = GRIDFINITY_FRAME_WIDTH_HALF * 2
@@ -114,20 +114,28 @@ def make_mount(
         )
 
         def _find_edge(edges, x, y):
-            return edges.filter_by_position(Axis.X, x - 0.001, x + 0.001).filter_by_position(Axis.Y, y - 0.001, y + 0.001)[0]
+            return edges.filter_by_position(
+                Axis.X, x - 0.001, x + 0.001
+            ).filter_by_position(Axis.Y, y - 0.001, y + 0.001)[0]
 
         edge = _find_edge(
-                part_mount.edges(),
-                WINDOW_FRAME_DEPTH + WINDOW_FRAME_SECOND_UPPER_THICKNESS + mount_thickness,
-                WINDOW_FRAME_HEIGHT + WINDOW_FRAME_SECOND_UPPER_HEIGHT - WINDOW_FRAME_SECOND_HOOK_MAX_ALLOW_LENGTH
-            )
+            part_mount.edges(),
+            WINDOW_FRAME_DEPTH + WINDOW_FRAME_SECOND_UPPER_THICKNESS + mount_thickness,
+            WINDOW_FRAME_HEIGHT
+            + WINDOW_FRAME_SECOND_UPPER_HEIGHT
+            - WINDOW_FRAME_SECOND_HOOK_MAX_ALLOW_LENGTH,
+        )
         chamfer(
             edge,
-            length=mount_thickness - 0.001,
-            length2=WINDOW_FRAME_SECOND_HOOK_MAX_ALLOW_LENGTH - 0.001,
+            length=WINDOW_FRAME_SECOND_HOOK_MAX_ALLOW_LENGTH - 0.001,
+            length2=mount_thickness - 0.001,
         )
 
-        face = _find_shape_by_axis(part_mount.faces(), Axis.Y, WINDOW_FRAME_HEIGHT + mount_thickness + slot_depth)[0]
+        face = _find_shape_by_axis(
+            part_mount.faces(),
+            Axis.Y,
+            WINDOW_FRAME_HEIGHT + mount_thickness + slot_depth,
+        )[0]
         with BuildSketch(face) as sketch_holes:
             start = (
                 -(WINDOW_FRAME_DEPTH + mount_outreach_length) / 2
@@ -148,7 +156,11 @@ def make_mount(
     with BuildPart() as part_mount_support:
         with BuildSketch():
             _num = slot_number // 4 + 1
-            _interval = (mount_outreach_length - MOUNT_THICKNESS) * primary_support_position / _num
+            _interval = (
+                (mount_outreach_length - MOUNT_THICKNESS)
+                * primary_support_position
+                / _num
+            )
             for i in range(_num):
                 with BuildLine():
                     l5 = EllipticalCenterArc(
@@ -171,9 +183,9 @@ def make_mount(
                 offset(amount=mount_thickness, side=Side.RIGHT)
             make_face()
         thicken(amount=mount_width)
-    
+
     mount = part_mount.part + part_mount_support.part
-    
+
     return mount
 
 
@@ -212,7 +224,7 @@ def make_rail(
     return rail.part
 
 
-GRID_SIZE = 4, 2
+GRID_SIZE = 4, 3
 MOUNT_THICKNESS = 5 * MM
 MOUNT_WIDTH = 10 * MM
 SLOT_DEPTH = 3 * MM
