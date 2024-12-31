@@ -213,6 +213,7 @@ def _make_filling_hole_cover(
         )
     return part_cover.part
 
+
 def _make_water_indicator(
     cover_thickness,
     radius=2.5,
@@ -222,10 +223,7 @@ def _make_water_indicator(
     floating_block_height=6,
 ):
     indicator_height = (
-        height_unit * GF_UNIT_HEIGHT
-        - GF_BASE_TOTAL_HEIGHT
-        - cover_thickness
-        + 5 * MM
+        height_unit * GF_UNIT_HEIGHT - GF_BASE_TOTAL_HEIGHT - cover_thickness + 5 * MM
     )
     with BuildPart() as part_indicator:
         Cylinder(
@@ -241,33 +239,40 @@ def _make_water_indicator(
     return part_indicator.part
 
 
-
-def _make_seed_starter_hole(width, conner_radius, cover_thickness):
+def _make_seed_starter_hole(width, conner_radius, cover_thickness, thicken_times=2):
     with BuildPart() as part_1:
         with BuildSketch():
-            rect = Rectangle(width+cover_thickness, width+cover_thickness)
+            rect = Rectangle(width + cover_thickness, width + cover_thickness)
             fillet(rect.vertices(), radius=conner_radius)
-        shape=thicken(amount=-cover_thickness*2)
+        shape = thicken(amount=-cover_thickness * thicken_times)
     with BuildPart() as part_2:
         with BuildSketch():
-            rect = Rectangle(width+cover_thickness, width+cover_thickness)
+            rect = Rectangle(width + cover_thickness, width + cover_thickness)
             fillet(rect.vertices(), radius=conner_radius)
             offset(amount=-cover_thickness, mode=Mode.SUBTRACT)
-        shape=thicken(amount=-cover_thickness*2)
-        fillet(shape.edges().sort_by(Axis.Z)[-1], radius=cover_thickness-0.01)
+        shape = thicken(amount=-cover_thickness * thicken_times)
+        fillet(shape.edges().sort_by(Axis.Z)[-1], radius=cover_thickness - 0.01)
     return part_1.part - part_2.part
 
 
-def _make_seed_starter_hole_cover(width, conner_radius, cover_thickness,
-                                  handler_radius, handler_height, 
-                                  tolerance=0.1,
-                                  handler_tolerance=0.1):
-    cover_base = _make_seed_starter_hole(width, conner_radius-tolerance, cover_thickness)
+def _make_seed_starter_hole_cover(
+    width,
+    conner_radius,
+    cover_thickness,
+    handler_radius,
+    handler_height,
+    tolerance=0.1,
+    handler_tolerance=0.1,
+):
+    cover_base = _make_seed_starter_hole(
+        width, conner_radius - tolerance, cover_thickness
+    )
     handler = Cylinder(
-            handler_radius,
-            handler_height,
-            align=(Align.CENTER, Align.CENTER, Align.MIN),
-        )
+        handler_radius,
+        handler_height,
+        align=(Align.CENTER, Align.CENTER, Align.MIN),
+    )
+
     def _make_center_part(_tolerance):
         with BuildPart() as part_cover:
             Cone(
@@ -278,31 +283,64 @@ def _make_seed_starter_hole_cover(width, conner_radius, cover_thickness,
             )
             with Locations((0, 0, -cover_thickness)):
                 Cylinder(
-                    handler_radius*2 - _tolerance,
+                    handler_radius * 2 - _tolerance,
                     cover_thickness,
                     align=(Align.CENTER, Align.CENTER, Align.MAX),
                 )
         return part_cover.part
-    return cover_base - _make_center_part(0), handler + _make_center_part(handler_tolerance)
+
+    return cover_base - _make_center_part(0), handler + _make_center_part(
+        handler_tolerance
+    )
 
 
-def _make_seed_starter_hole_screw_cover(width, conner_radius, cover_thickness,
-                                  handler_height, 
-                                  tolerance=0.1):
-    cover_base = _make_seed_starter_hole(width, conner_radius-tolerance, cover_thickness)
-    handler = Cylinder(
-            2.46 * MM,
+def _make_seed_starter_hole_screw_cover(
+    width, conner_radius, cover_thickness, handler_radius, handler_height, tolerance=0.1
+):
+    cover_base = _make_seed_starter_hole(
+        width, conner_radius - tolerance, cover_thickness
+    )
+    screw = SetScrew(
+        size="M6-1",
+        length=cover_thickness * 3,
+        simple=False,
+        align=(Align.CENTER, Align.CENTER, Align.MAX),
+    )
+    handler = (
+        Cylinder(
+            handler_radius,
             handler_height,
             align=(Align.CENTER, Align.CENTER, Align.MIN),
         )
-    screw = HexHeadScrew(size="M6-1",
-                        length=cover_thickness * 2,
-                        simple=False,
-                        )
-    handler += mirror(screw, about=Plane.XY).moved(Location((0, 0, -cover_thickness * 2)))
-    return cover_base - handler, handler
+        + Cylinder(
+            2 * MM,
+            cover_thickness * 4,
+            align=(Align.CENTER, Align.CENTER, Align.MAX),
+        )
+        + screw
+    )
+    hole = Cylinder(
+        screw.thread_diameter / 2 + 0.2,
+        cover_thickness * 3,
+        align=(Align.CENTER, Align.CENTER, Align.MAX),
+    )
+    thread = IsoThread(
+        major_diameter=screw.thread_diameter + 0.1,
+        pitch=screw.thread_pitch,
+        length=screw.length,
+        external=False,
+        align=(Align.CENTER, Align.CENTER, Align.MAX),
+        end_finishes=("square", "square"),
+    )
 
-         
+    cover_base = (
+        _make_seed_starter_hole(
+            width, conner_radius - tolerance, cover_thickness, thicken_times=3
+        )
+        - hole
+    )
+    return cover_base + thread, handler.move(Location((0, width / 2 + 10, 0)))
+
 
 def _make_seed_starter_holes(
     width,
@@ -313,14 +351,16 @@ def _make_seed_starter_holes(
     hole_locator,
     reserve_last=False,
 ):
-    locations = [
-        hole_locator(i, j) for j, i in product(range(num_y), range(num_x))
-    ]
+    locations = [hole_locator(i, j) for j, i in product(range(num_y), range(num_x))]
     if reserve_last:
         locations.pop(num_x - 1)
-    holes = [_make_seed_starter_hole(width, conner_radius, cover_thickness).move(Location(location)) for location in locations]
+    holes = [
+        _make_seed_starter_hole(width, conner_radius, cover_thickness).move(
+            Location(location)
+        )
+        for location in locations
+    ]
     return sum(holes[1:], start=holes[0])
-
 
 
 def make_seed_starter_plate(
@@ -337,7 +377,8 @@ def make_seed_starter_plate(
     filling_hole_in_new_row=True,
     filling_hole_radius=10 * MM,
     hole_cover_tolerance=0.2 * MM,
-    hole_cover_handler_radius=2.5 * MM,
+    hole_cover_hander_with_screw=True,
+    hole_cover_handler_radius=3 * MM,
     hole_cover_handler_height=10 * MM,
     hole_cover_handler_tolerance=0.1 * MM,
     water_indicator_tolerance=0.5 * MM,
@@ -417,8 +458,6 @@ def make_seed_starter_plate(
         reserve_last=filling_hole and not filling_hole_in_new_row,
     ).move(Location((0, 0, GF_BASE_TOTAL_HEIGHT + cover_thickness)))
 
-
-
     if filling_hole:
         if filling_hole_in_new_row:
             filling_hole_position = Location(
@@ -442,15 +481,27 @@ def make_seed_starter_plate(
             cover_thickness=cover_thickness,
         ).move(filling_hole_position)
 
-    starter_hole_cover, starter_hole_cover_handler = _make_seed_starter_hole_cover(
-        width=support_hole_width, 
-        conner_radius=support_hole_conner_radius, 
-        cover_thickness=cover_thickness, 
-        handler_radius=hole_cover_handler_radius, 
-        handler_height=hole_cover_handler_height, 
-        tolerance=hole_cover_handler_tolerance,
-        handler_tolerance=hole_cover_handler_tolerance,
-    )
+    if hole_cover_hander_with_screw:
+        starter_hole_cover, starter_hole_cover_handler = (
+            _make_seed_starter_hole_screw_cover(
+                width=support_hole_width,
+                conner_radius=support_hole_conner_radius,
+                cover_thickness=cover_thickness,
+                handler_radius=hole_cover_handler_radius,
+                handler_height=hole_cover_handler_height,
+                tolerance=hole_cover_handler_tolerance,
+            )
+        )
+    else:
+        starter_hole_cover, starter_hole_cover_handler = _make_seed_starter_hole_cover(
+            width=support_hole_width,
+            conner_radius=support_hole_conner_radius,
+            cover_thickness=cover_thickness,
+            handler_radius=hole_cover_handler_radius,
+            handler_height=hole_cover_handler_height,
+            tolerance=hole_cover_handler_tolerance,
+            handler_tolerance=hole_cover_handler_tolerance,
+        )
 
     filling_hole_cover = _make_filling_hole_cover(
         radius=filling_hole_radius,
@@ -458,7 +509,7 @@ def make_seed_starter_plate(
         tolerance=hole_cover_tolerance,
         indicator_radius=hole_cover_handler_radius,
     )
-    
+
     water_indicator = _make_water_indicator(
         cover_thickness=cover_thickness,
         radius=hole_cover_handler_radius,
@@ -467,8 +518,15 @@ def make_seed_starter_plate(
         floating_block_radius=water_indicator_floating_block_radius,
         floating_block_height=water_indicator_floating_block_height,
     )
-    
-    return box, plate, starter_hole_cover, starter_hole_cover_handler, filling_hole_cover, water_indicator
+
+    return (
+        box,
+        plate,
+        starter_hole_cover,
+        starter_hole_cover_handler,
+        filling_hole_cover,
+        water_indicator,
+    )
 
 
 kit = make_seed_starter_plate(
@@ -476,7 +534,7 @@ kit = make_seed_starter_plate(
     gf_unit_y=3,
     gf_unit_z=6,
     cover_thickness=1 * MM,
-    wall_thickness=1 * MM,
+    wall_thickness=0.8 * MM,
     with_stack_lip=True,
     starter_min_width=55 * MM,
     support_hole_width=41.5 * MM,
@@ -484,26 +542,46 @@ kit = make_seed_starter_plate(
     filling_hole=False,
     filling_hole_in_new_row=True,
     filling_hole_radius=7.5 * MM,
+    hole_cover_hander_with_screw=True,
     hole_cover_tolerance=0.2 * MM,
-    hole_cover_handler_radius=2.5 * MM,
-    hole_cover_handler_height=10 * MM,
+    hole_cover_handler_radius=3.5 * MM,
+    hole_cover_handler_height=20 * MM,
     hole_cover_handler_tolerance=0.05 * MM,
-    water_indicator_tolerance=0.5 * MM,
-    water_indicator_floating_block_radius=10 * MM,
-    water_indicator_floating_block_height=6 * MM,
+    # water_indicator_tolerance=0.5 * MM,
+    # water_indicator_floating_block_radius=10 * MM,
+    # water_indicator_floating_block_height=6 * MM,
 )
 
 seed_starter_kit = pack([x for x in kit if x], 10 * MM, align_z=True)
 
-# a, b = _make_seed_starter_hole_screw_cover(20, 5, 1, 10,  tolerance=0.1)
+# screw = SetScrew(
+#         size="M6-1",
+#         length=10 * MM,
+#         simple=False,
+#         align=(Align.CENTER, Align.CENTER, Align.MAX),
+#     )
+
+# with BuildPart() as part_cover:
+#     cyl = Cylinder(
+#         41.5 / 4, 10 * MM,
+#     )
+#     hole = Cylinder(
+#         6.1 / 2, 10 * MM,
+#         align=(Align.CENTER, Align.CENTER, Align.MAX),
+#     )
+#     thread=IsoThread(
+#         major_diameter=6.1,
+#         pitch=screw.thread_pitch,
+#         length=10 * MM,
+#         external=False,
+#         align=(Align.CENTER, Align.CENTER, Align.MIN),
+#         end_finishes=("fade", "fade")
+#     )
 
 exporter = Mesher()
 exporter.add_shape(seed_starter_kit)
-# exporter.add_shape(a)
-# exporter.add_shape(b)
 exporter.add_code_to_metadata()
 exporter.write("exports/gridfinity_seed_starter.stl")
 exporter.write("exports/gridfinity_seed_starter.3mf")
-
 
 show_all()
