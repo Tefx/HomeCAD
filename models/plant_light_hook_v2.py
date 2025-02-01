@@ -24,10 +24,11 @@ class HookGearInnerSketch(BaseSketchObject):
         inner_circle_radius = radius * self.INNER_RADIUS_RATIO
         if is_inside:
             tooth_width_half -= JOINT_TOLERANCE
-            tooth_height -= JOINT_TOLERANCE
+            tooth_height -= JOINT_TOLERANCE 
             inner_circle_radius -= JOINT_TOLERANCE
+            radius -= JOINT_TOLERANCE * 2
         with BuildSketch() as sketch:
-            with PolarLocations(radius=radius - JOINT_TOLERANCE, count=tooth_number):
+            with PolarLocations(radius=radius, count=tooth_number):
                 Ellipse(
                     tooth_height,
                     tooth_width_half,
