@@ -1,4 +1,5 @@
 from copy import copy
+from enum import Enum
 from functools import reduce
 from itertools import product
 from math import ceil, floor
@@ -418,16 +419,112 @@ def _make_seed_starter_holes(
     return sum(holes[1:], start=holes[0])
 
 
-def make_seed_starter_plate(
+def _make_hydroponic_hole(
+    radius, cover_thickness, thicken_times=2, fillet_bottom=False
+):
+    with BuildPart() as part_1:
+        with BuildSketch():
+            circle = Circle(radius + cover_thickness)
+        shape = thicken(amount=-cover_thickness * thicken_times)
+    with BuildPart() as part_2:
+        with BuildSketch():
+            circle = Circle(radius + cover_thickness)
+            offset(amount=-cover_thickness, mode=Mode.SUBTRACT)
+        shape = thicken(amount=-cover_thickness * thicken_times)
+        fillet(shape.edges().sort_by(Axis.Z)[-1], radius=cover_thickness / 2 - 0.01)
+        if fillet_bottom:
+            fillet(shape.edges().sort_by(Axis.Z)[1], radius=cover_thickness / 2 - 0.01)
+    return part_1.part - part_2.part
+
+
+def _make_hydroponic_holes(
+    radius,
+    cover_thickness,
+    num_x,
+    num_y,
+    hole_locator,
+    reserve_last=False,
+):
+    locations = [hole_locator(i, j) for j, i in product(range(num_y), range(num_x))]
+    if reserve_last:
+        locations.pop(num_x - 1)
+    holes = [
+        _make_hydroponic_hole(
+            radius, cover_thickness, fillet_bottom=True, thicken_times=1
+        ).move(Location(location))
+        for location in locations
+    ]
+    return sum(holes[1:], start=holes[0])
+
+
+def _make_hydroponic_hole_screw_cover(
+    radius,
+    tolerance,
+    cover_thickness,
+    handler_radius,
+    handler_height,
+):
+    cover_thicken_times = min(ceil(3 / cover_thickness), 2)
+    screw = SetScrew(
+        size="M6-1",
+        length=cover_thickness * cover_thicken_times,
+        simple=False,
+        align=(Align.CENTER, Align.CENTER, Align.MAX),
+    )
+    handler = (
+        Cylinder(
+            handler_radius,
+            handler_height,
+            align=(Align.CENTER, Align.CENTER, Align.MIN),
+        )
+        + Cylinder(
+            2 * MM,
+            cover_thickness * (cover_thicken_times + 1),
+            align=(Align.CENTER, Align.CENTER, Align.MAX),
+        )
+        + screw
+    )
+    hole = Cylinder(
+        screw.thread_diameter / 2 + 0.2,
+        cover_thickness * cover_thicken_times,
+        align=(Align.CENTER, Align.CENTER, Align.MAX),
+    )
+    thread = IsoThread(
+        major_diameter=screw.thread_diameter + 0.1,
+        pitch=screw.thread_pitch,
+        length=screw.length,
+        external=False,
+        align=(Align.CENTER, Align.CENTER, Align.MAX),
+        end_finishes=("square", "square"),
+    )
+    cover_base = (
+        _make_hydroponic_hole(
+            radius - tolerance,
+            cover_thickness,
+            thicken_times=cover_thicken_times,
+        )
+        - hole
+    )
+    return cover_base + thread, handler.move(Location((0, radius + 10, 0)))
+
+
+class CoverType(Enum):
+    SEED_STARTER = "seed_starter"
+    HYDROPONIC = "hydroponic"
+
+
+def make_planter_plate(
     gf_unit_x=4,
     gf_unit_y=3,
     gf_unit_z=6,
+    cover_type=CoverType.SEED_STARTER,
     cover_thickness=1 * MM,
     wall_thickness=1 * MM,
     with_stack_lip=True,
-    starter_min_width=55 * MM,
-    support_hole_width=41.5 * MM,
-    support_hole_conner_radius=10 * MM,
+    plant_min_width=55 * MM,
+    seed_starter_hole_width=43 * MM,
+    seed_starter_hole_conner_radius=10.825 * MM,
+    hydroponic_hole_radius=18 * MM,
     filling_hole=True,
     filling_hole_in_new_row=True,
     filling_hole_radius=10 * MM,
@@ -459,27 +556,31 @@ def make_seed_starter_plate(
     cover_y_max = gf_unit_y * GF_UNIT_WIDTH - edge_delta
     filling_hole_in_new_row = filling_hole_in_new_row and filling_hole
     filling_hole_outer_radius = filling_hole_radius + cover_thickness
-    num_x = floor((cover_x_max - support_hole_width) / starter_min_width) + 1
+    if cover_type == CoverType.SEED_STARTER:
+        hole_width = seed_starter_hole_width
+    elif cover_type == CoverType.HYDROPONIC:
+        hole_width = hydroponic_hole_radius * 2
+    else:
+        raise ValueError("Invalid cover type")
+    num_x = floor((cover_x_max - hole_width) / plant_min_width) + 1
     if filling_hole_in_new_row:
         num_y = (
             floor(
-                (cover_y_max - support_hole_width - filling_hole_outer_radius * 2)
-                / starter_min_width
+                (cover_y_max - hole_width - filling_hole_outer_radius * 2)
+                / plant_min_width
             )
             + 1
         )
     else:
-        num_y = floor((cover_y_max - support_hole_width) / starter_min_width) + 1
+        num_y = floor((cover_y_max - hole_width) / plant_min_width) + 1
 
     def _cal_gap(total, num, filling_hole_num):
         gap_fix = 0
-        total -= (
-            filling_hole_outer_radius * 2 * filling_hole_num + support_hole_width * num
-        )
+        total -= filling_hole_outer_radius * 2 * filling_hole_num + hole_width * num
         interval_num = num + filling_hole_num + 1
         gap = total / interval_num
-        if gap < (starter_min_width - support_hole_width):
-            gap_fix = starter_min_width - support_hole_width
+        if gap < (plant_min_width - hole_width):
+            gap_fix = plant_min_width - hole_width
             # gap = (total - starter_min_width * num + gap_fix) / interval_num
             gap = (total - gap_fix * (num - 1)) / (filling_hole_num + 2)
             gap_fix -= gap
@@ -492,16 +593,16 @@ def make_seed_starter_plate(
         x = (
             gap_x
             - cover_x_max / 2
-            + support_hole_width
+            + hole_width
             + (gap_x + gap_fix_x) / 2
-            + i * (support_hole_width + gap_x + gap_fix_x)
+            + i * (hole_width + gap_x + gap_fix_x)
         )
         y = (
             gap_y
             - cover_y_max / 2
-            + support_hole_width
+            + hole_width
             + (gap_y + gap_fix_y) / 2
-            + j * (support_hole_width + gap_y + gap_fix_y)
+            + j * (hole_width + gap_y + gap_fix_y)
         )
         if filling_hole_in_new_row:
             y += filling_hole_outer_radius * 2 + gap_y
@@ -522,29 +623,39 @@ def make_seed_starter_plate(
     )
 
     def _hole_locator(i, j):
-        x = support_hole_width / 2 - cover_x_max / 2 + gap_x
-        y = support_hole_width / 2 - cover_y_max / 2 + gap_y
+        x = hole_width / 2 - cover_x_max / 2 + gap_x
+        y = hole_width / 2 - cover_y_max / 2 + gap_y
         if filling_hole_in_new_row:
             y += filling_hole_outer_radius * 2 + gap_y
-        x += i * (support_hole_width + gap_x + gap_fix_x)
-        y += j * (support_hole_width + gap_y + gap_fix_y)
+        x += i * (hole_width + gap_x + gap_fix_x)
+        y += j * (hole_width + gap_y + gap_fix_y)
         return (x, y)
 
-    plate -= _make_seed_starter_holes(
-        width=support_hole_width,
-        conner_radius=support_hole_conner_radius,
-        cover_thickness=cover_thickness,
-        num_x=num_x,
-        num_y=num_y,
-        hole_locator=_hole_locator,
-        reserve_last=filling_hole and not filling_hole_in_new_row,
-    ).move(Location((0, 0, GF_BASE_TOTAL_HEIGHT + cover_thickness)))
+    if cover_type == CoverType.SEED_STARTER:
+        plate -= _make_seed_starter_holes(
+            width=seed_starter_hole_width,
+            conner_radius=seed_starter_hole_conner_radius,
+            cover_thickness=cover_thickness,
+            num_x=num_x,
+            num_y=num_y,
+            hole_locator=_hole_locator,
+            reserve_last=filling_hole and not filling_hole_in_new_row,
+        ).move(Location((0, 0, GF_BASE_TOTAL_HEIGHT + cover_thickness)))
+    else:
+        plate -= _make_hydroponic_holes(
+            radius=hydroponic_hole_radius,
+            cover_thickness=cover_thickness,
+            num_x=num_x,
+            num_y=num_y,
+            hole_locator=_hole_locator,
+            reserve_last=filling_hole and not filling_hole_in_new_row,
+        ).move(Location((0, 0, GF_BASE_TOTAL_HEIGHT + cover_thickness)))
 
     if filling_hole:
         if filling_hole_in_new_row:
             filling_hole_position = Location(
                 (
-                    cover_x_max / 2 - gap_x - support_hole_width / 2,
+                    cover_x_max / 2 - gap_x - hole_width / 2,
                     -cover_y_max / 2 + gap_y + filling_hole_outer_radius,
                     GF_BASE_TOTAL_HEIGHT + cover_thickness,
                 )
@@ -563,27 +674,36 @@ def make_seed_starter_plate(
             cover_thickness=cover_thickness,
         ).move(filling_hole_position)
 
-    if hole_cover_hander_with_screw:
-        starter_hole_cover, starter_hole_cover_handler = (
-            _make_seed_starter_hole_screw_cover(
-                width=support_hole_width,
-                conner_radius=support_hole_conner_radius,
+    if cover_type == CoverType.SEED_STARTER:
+        if hole_cover_hander_with_screw:
+            hole_cover, hole_cover_handler = _make_seed_starter_hole_screw_cover(
+                width=seed_starter_hole_width,
+                conner_radius=seed_starter_hole_conner_radius,
                 tolerance=hole_cover_tolerance,
                 cover_thickness=cover_thickness,
                 handler_radius=hole_cover_handler_radius,
                 handler_height=hole_cover_handler_height,
             )
-        )
-    else:
-        starter_hole_cover, starter_hole_cover_handler = _make_seed_starter_hole_cover(
-            width=support_hole_width,
-            conner_radius=support_hole_conner_radius,
+        else:
+            hole_cover, hole_cover_handler = _make_seed_starter_hole_cover(
+                width=seed_starter_hole_width,
+                conner_radius=seed_starter_hole_conner_radius,
+                cover_thickness=cover_thickness,
+                handler_radius=hole_cover_handler_radius,
+                handler_height=hole_cover_handler_height,
+                tolerance=hole_cover_tolerance,
+                handler_tolerance=hole_cover_handler_tolerance,
+            )
+    elif cover_type == CoverType.HYDROPONIC:
+        hole_cover, hole_cover_handler = _make_hydroponic_hole_screw_cover(
+            radius=hydroponic_hole_radius,
+            tolerance=hole_cover_tolerance,
             cover_thickness=cover_thickness,
             handler_radius=hole_cover_handler_radius,
             handler_height=hole_cover_handler_height,
-            tolerance=hole_cover_tolerance,
-            handler_tolerance=hole_cover_handler_tolerance,
         )
+    else:
+        raise ValueError("Invalid cover type")
 
     filling_hole_cover = _make_filling_hole_cover(
         radius=filling_hole_radius,
@@ -596,7 +716,7 @@ def make_seed_starter_plate(
         if filling_hole:
             water_indicator_floating_block_radius = filling_hole_radius - 0.2 * MM
         else:
-            water_indicator_floating_block_radius = support_hole_width / 2 - 2 * MM
+            water_indicator_floating_block_radius = hole_width / 2 - 2 * MM
 
     water_indicator = _make_water_indicator(
         cover_thickness=cover_thickness,
@@ -616,27 +736,25 @@ def make_seed_starter_plate(
     return (
         box,
         plate,
-        starter_hole_cover,
-        starter_hole_cover_handler,
+        hole_cover,
+        hole_cover_handler,
         filling_hole_cover,
         water_indicator,
         supporting_pillar,
     )
 
 
-kit = make_seed_starter_plate(
-    gf_unit_x=4,
-    gf_unit_y=3,
-    gf_unit_z=6,
+kit = make_planter_plate(
+    gf_unit_x=2,
+    gf_unit_y=2,
+    gf_unit_z=10,
+    cover_type=CoverType.HYDROPONIC,
     cover_thickness=2 * MM,
     wall_thickness=2 * MM,
-    with_stack_lip=True,
-    starter_min_width=55 * MM,
-    # support_hole_width=42.23 * MM,
-    # support_hole_conner_radius=10.44 * MM,
-    support_hole_width=43 * MM,
-    support_hole_conner_radius=10.825 * MM,
-    filling_hole=True,
+    with_stack_lip=False,
+    plant_min_width=48 * MM,
+    hydroponic_hole_radius=18 * MM,
+    filling_hole=False,
     filling_hole_in_new_row=True,
     filling_hole_radius=7.5 * MM,
     hole_cover_hander_with_screw=True,
@@ -654,7 +772,7 @@ seed_starter_kit = pack([x for x in kit if x], 10 * MM, align_z=True)
 exporter = Mesher()
 exporter.add_shape(seed_starter_kit)
 exporter.add_code_to_metadata()
-exporter.write("exports/gridfinity_seed_starter.stl")
-exporter.write("exports/gridfinity_seed_starter.3mf")
+exporter.write("exports/gridfinity_planter.stl")
+exporter.write("exports/gridfinity_planter.3mf")
 
 show_all()
